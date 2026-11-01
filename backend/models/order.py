@@ -16,7 +16,7 @@ class Order(db.Model):  # type: ignore
 
     # --- 字段定义 ---
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=func.gen_random_uuid())  # 主键ID (UUID)
-    user_id = Column(BigInteger, ForeignKey('users.id'), nullable=False)  # 外键，关联到用户表的id
+    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)  # 外键，关联到用户表的id (UUID)
     order_number = Column(BigInteger, unique=True, nullable=False)  # 订单号，唯一且不为空
     total_amount = Column(Numeric(10, 2), nullable=False)  # 订单总金额，使用Numeric类型以保证精度
     

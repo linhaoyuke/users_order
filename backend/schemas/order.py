@@ -25,7 +25,7 @@ class OrderSchema(ma.Schema):
     items = fields.Nested(OrderItemSchema, many=True, dump_only=True)
     user_username = fields.Method("get_user_username", dump_only=True)
     user_full_name = fields.Method("get_user_full_name", dump_only=True)
-    user_id = fields.Int(dump_only=True)
+    user_id = fields.UUID(dump_only=True)
 
     def get_user_username(self, obj):
         return obj.user.username if obj.user else None

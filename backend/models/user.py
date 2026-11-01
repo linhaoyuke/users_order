@@ -1,8 +1,10 @@
 # backend/models/user.py
 
+import uuid
 # 导入所需模块
 from extensions import db  # 导入数据库实例
 from sqlalchemy import Column, BigInteger, String, Boolean, DateTime, ForeignKey, Table
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.sql import func  # 用于处理时间戳
 from werkzeug.security import generate_password_hash, check_password_hash  # 用于密码的哈希和校验
@@ -13,16 +15,16 @@ from werkzeug.security import generate_password_hash, check_password_hash  # 用
 # 一个用户可以有多个角色，一个角色可以赋予多个用户
 user_roles = Table(
     'user_roles', db.metadata,
-    Column('user_id', BigInteger, ForeignKey('users.id'), primary_key=True),
-    Column('role_id', BigInteger, ForeignKey('roles.id'), primary_key=True)
+    Column('user_id', UUID(as_uuid=True), ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
+    Column('role_id', BigInteger, ForeignKey('roles.id', ondelete='CASCADE'), primary_key=True)
 )
 
 # 角色-权限多对多关联表
 # 一个角色可以包含多个权限，一个权限可以属于多个角色
 role_permissions = Table(
     'role_permissions', db.metadata,
-    Column('role_id', BigInteger, ForeignKey('roles.id'), primary_key=True),
-    Column('permission_id', BigInteger, ForeignKey('permissions.id'), primary_key=True)
+    Column('role_id', BigInteger, ForeignKey('roles.id', ondelete='CASCADE'), primary_key=True),
+    Column('permission_id', BigInteger, ForeignKey('permissions.id', ondelete='CASCADE'), primary_key=True)
 )
 
 class User(db.Model):  # type: ignore
@@ -32,7 +34,7 @@ class User(db.Model):  # type: ignore
     __tablename__ = 'users'  # 定义在数据库中的表名
 
     # --- 字段定义 ---
-    id = Column(BigInteger, primary_key=True)  # 主键ID
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=func.gen_random_uuid())  # 主键ID (UUID)
     username = Column(String(50), unique=True, nullable=False)  # 用户名，唯一且不为空
     password = Column(String(255), nullable=False)  # 存储哈希后的密码，不为空
     email = Column(String(100), unique=True, nullable=False)  # 邮箱，唯一且不为空
@@ -94,7 +96,7 @@ class User(db.Model):  # type: ignore
     def to_dict(self):
         """将用户对象转换为包含完整信息的字典，用于API响应。"""
         return {
-            'id': self.id,
+            'id': str(self.id) if self.id else None,
             'username': self.username,
             'email': self.email,
             'full_name': self.full_name,
@@ -108,7 +110,7 @@ class User(db.Model):  # type: ignore
     def to_jwt_dict(self):
         """将用户对象转换为包含JWT所需核心信息的字典。"""
         return {
-            'id': self.id,
+            'id': str(self.id) if self.id else None,
             'username': self.username,
             'email': self.email,
             'full_name': self.full_name,

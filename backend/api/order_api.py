@@ -116,7 +116,7 @@ def handle_order(order_id):
     is_admin = any(role['code'] == 'admin' for role in current_user.get('roles', []))
 
     # --- 权限检查 ---
-    if not is_admin and order.user_id != current_user['id']:
+    if not is_admin and str(order.user_id) != str(current_user['id']):
         return jsonify({"message": "无权操作此订单"}), 403
 
     # --- 根据请求方法执行不同操作 ---
@@ -356,7 +356,7 @@ def handle_order(order_id):
         # 获取订单信息用于日志记录
         order_data = {
             'order_number': str(order.order_number),
-            'user_id': order.user_id,
+            'user_id': str(order.user_id),
             'status': order.status,
             'payment_status': order.payment_status,
             'shipping_address': order.shipping_address,

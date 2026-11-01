@@ -23,6 +23,7 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
     用于序列化User模型的Schema。
     这是最完整的Schema，通常用于读取和返回用户信息。
     """
+    id = fields.UUID(dump_only=True)
     # 嵌套RoleSchema来处理多对多的roles关系
     roles = fields.Nested(RoleSchema, many=True)
 

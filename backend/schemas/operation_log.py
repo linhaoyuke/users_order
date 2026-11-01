@@ -44,7 +44,7 @@ class OperationLogQuerySchema(ma.Schema):
     per_page = fields.Int(load_default=20, validate=validate.Range(min=1, max=100))
     
     # 筛选参数
-    operator_id = fields.Int()
+    operator_id = fields.UUID()
     operator_username = fields.Str()
     module = fields.Str(validate=validate.OneOf([
         'user', 'role', 'permission', 'order', 'product', 'auth', 'system'

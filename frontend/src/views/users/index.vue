@@ -9,7 +9,7 @@
     @size-change="handleSizeChange"
     @current-change="handleCurrentChange"
   >
-    <el-table-column prop="id" label="ID" width="80" />
+    <el-table-column prop="id" label="ID" min-width="120" show-overflow-tooltip />
     <el-table-column prop="username" label="用户名" min-width="120" />
     <el-table-column prop="email" label="邮箱" min-width="180" />
     <el-table-column prop="full_name" label="姓名" min-width="120" />

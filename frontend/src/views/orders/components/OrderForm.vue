@@ -117,7 +117,7 @@ const isEditMode = ref(false)
 
 // 表单数据
 const form = reactive<{
-  user_id: number | null
+  user_id: string | null
   shipping_address: string
   items: { product: Product; quantity: number }[]
 }>({

@@ -12,7 +12,7 @@ export interface OrderItem {
 
 export interface Order {
   id: string
-  user_id: number
+  user_id: string
   user_username?: string
   user_full_name?: string
   order_number: string
@@ -27,7 +27,7 @@ export interface Order {
 
 // 创建订单时，前端需要提交的数据结构
 export interface CreateOrderForm {
-  user_id: number | null
+  user_id: string | null
   shipping_address?: string
   items: {
     product_id: string

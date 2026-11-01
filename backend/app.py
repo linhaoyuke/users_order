@@ -1,5 +1,6 @@
 # 导入所需模块
 import json  # 导入JSON模块
+import uuid
 from datetime import datetime  # 导入datetime用于处理时间
 
 from flask import Flask, jsonify  # 导入Flask框架和jsonify用于返回JSON响应
@@ -36,6 +37,8 @@ def create_app(config_class=Config):
             # 如果对象是datetime类型，则格式化为ISO 8601字符串
             if isinstance(obj, datetime):
                 return obj.isoformat()
+            if isinstance(obj, uuid.UUID):
+                return str(obj)
             # 其他类型使用默认编码器处理
             return super().default(obj)
 
@@ -51,6 +54,8 @@ def create_app(config_class=Config):
                 # 同样处理datetime对象
                 if isinstance(obj, datetime):
                     return obj.isoformat()
+                if isinstance(obj, uuid.UUID):
+                    return str(obj)
                 return super().default(obj)
 
         # 为应用配置新的JSON Provider

@@ -23,7 +23,7 @@ export interface Role {
 }
 
 export interface User {
-  id: number
+  id: string
   username: string
   email: string
   full_name?: string
@@ -46,7 +46,7 @@ export interface JwtPayload {
   jti: string
   sub: string
   type: string
-  id: number
+  id: string
   username: string
   email: string
   full_name: string | null

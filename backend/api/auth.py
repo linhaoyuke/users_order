@@ -133,7 +133,7 @@ def refresh():
         current_user_id = get_jwt_identity()
 
         # 从数据库重新获取最新的用户信息，确保信息实时性
-        user = User.query.get(int(current_user_id))
+        user = User.query.get(current_user_id)
         if not user or not user.is_active:
             return jsonify({"message": "用户不存在或已被禁用"}), 401
 

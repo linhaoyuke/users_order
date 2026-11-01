@@ -1,7 +1,7 @@
 import type {Role} from './auth'
 
 export interface User {
-  id: number
+  id: string
   username: string
   email: string
   full_name?: string

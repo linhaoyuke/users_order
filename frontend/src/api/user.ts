@@ -18,17 +18,17 @@ export const userApi = {
   },
 
   // 更新用户
-  updateUser: (id: number, data: UpdateUserForm) => {
+  updateUser: (id: string, data: UpdateUserForm) => {
     return request.put<User>(`/users/${id}`, data)
   },
 
   // 删除用户
-  deleteUser: (id: number) => {
+  deleteUser: (id: string) => {
     return request.delete(`/users/${id}`)
   },
 
   // 分配角色
-  assignRoles: (userId: number, roleIds: number[]) => {
+  assignRoles: (userId: string, roleIds: number[]) => {
     return request.post(`/users/${userId}/roles`, { role_ids: roleIds })
   },
 

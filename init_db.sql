@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS public.roles (
 
 -- 用户表
 CREATE TABLE IF NOT EXISTS public.users (
-    id BIGSERIAL PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username VARCHAR(50) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
     email VARCHAR(100) UNIQUE NOT NULL,
@@ -77,7 +77,7 @@ CREATE TRIGGER update_products_modtime BEFORE UPDATE ON public.products FOR EACH
 -- 订单表
 CREATE TABLE IF NOT EXISTS public.orders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id BIGINT NOT NULL REFERENCES public.users(id) ON DELETE SET NULL,
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
     order_number BIGINT UNIQUE NOT NULL,
     total_amount NUMERIC(10, 2) NOT NULL,
     status VARCHAR(50) DEFAULT 'pending_payment',
@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS public.order_items (
 -- 操作日志表
 CREATE TABLE IF NOT EXISTS public.operation_logs (
     id BIGSERIAL PRIMARY KEY,
-    operator_id BIGINT REFERENCES public.users(id) ON DELETE SET NULL,
+    operator_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
     operator_username VARCHAR(50),
     operator_name VARCHAR(100),
     module VARCHAR(50) NOT NULL,
@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS public.operation_logs (
 
 -- 用户-角色 关联表
 CREATE TABLE IF NOT EXISTS public.user_roles (
-    user_id BIGINT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
     role_id BIGINT NOT NULL REFERENCES public.roles(id) ON DELETE CASCADE,
     PRIMARY KEY (user_id, role_id)
 );
@@ -282,7 +282,7 @@ ON CONFLICT (user_id, role_id) DO NOTHING;
 DO $$
 DECLARE
     order_id UUID;
-    user_id BIGINT;
+    user_id UUID;
     product_id_1 UUID;
     product_price_1 NUMERIC(10, 2);
     product_id_2 UUID;

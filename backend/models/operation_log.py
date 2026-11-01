@@ -4,6 +4,7 @@ import json
 
 from extensions import db, db_session
 from sqlalchemy import Column, BigInteger, String, Text, DateTime, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -19,7 +20,7 @@ class OperationLog(db.Model):  # type: ignore
     id = Column(BigInteger, primary_key=True)  # 主键ID
     
     # --- 操作者信息 ---
-    operator_id = Column(BigInteger, ForeignKey('users.id'), nullable=True)  # 操作者ID，允许为空（系统操作）
+    operator_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True)  # 操作者ID，允许为空（系统操作）
     operator_username = Column(String(50), nullable=True)  # 操作者用户名（冗余字段，防止用户删除后无法追溯）
     operator_name = Column(String(100), nullable=True)  # 操作者真实姓名（冗余字段）
     
@@ -58,7 +59,7 @@ class OperationLog(db.Model):  # type: ignore
         """转换为字典格式，方便API返回"""
         return {
             'id': self.id,
-            'operator_id': self.operator_id,
+            'operator_id': str(self.operator_id) if self.operator_id else None,
             'operator_username': self.operator_username,
             'operator_name': self.operator_name,
             'module': self.module,

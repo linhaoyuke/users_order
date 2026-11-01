@@ -128,7 +128,7 @@ def create_user():
         
         # 准备日志数据（不包含密码）
         log_data = {key: value for key, value in data.items() if key != 'password'}
-        log_data['user_id'] = new_user.id
+        log_data['user_id'] = str(new_user.id)
         if 'roles' in data:
             log_data['assigned_roles'] = [{'id': r.id, 'name': r.name} for r in new_user.roles]
         
@@ -136,7 +136,7 @@ def create_user():
         LogHelper.log_user_operation(
             action=LogAction.CREATE,
             user_data=log_data,
-            resource_id=new_user.id,
+            resource_id=str(new_user.id),
             description=f"创建用户 - {new_user.username}"
         )
         
@@ -153,7 +153,7 @@ def create_user():
         )
         return jsonify({"message": f"创建用户失败: {str(e)}"}), 500
 
-@user_bp.route('/<int:user_id>', methods=['PUT'])
+@user_bp.route('/<string:user_id>', methods=['PUT'])
 @admin_required  # 只有管理员可以修改用户信息
 def update_user(user_id):
     """更新指定ID的用户信息。"""
@@ -281,7 +281,7 @@ def update_user(user_id):
         )
         return jsonify({"message": f"更新用户失败: {str(e)}"}), 500
 
-@user_bp.route('/<int:user_id>', methods=['DELETE'])
+@user_bp.route('/<string:user_id>', methods=['DELETE'])
 @admin_required  # 只有管理员可以删除用户
 def delete_user(user_id):
     """删除指定ID的用户。"""
@@ -289,7 +289,7 @@ def delete_user(user_id):
     
     # 防止管理员删除自己
     current_user_id = get_jwt_identity()
-    if user.id == int(current_user_id):
+    if str(user.id) == str(current_user_id):
         # 记录失败日志
         LogHelper.log_user_operation(
             action=LogAction.DELETE,
@@ -478,7 +478,7 @@ def get_user_stats():
         "active_users": active_users
     }), 200
 
-@user_bp.route('/<int:user_id>/roles', methods=['POST'])
+@user_bp.route('/<string:user_id>/roles', methods=['POST'])
 @admin_required
 def assign_user_roles(user_id):
     """为指定用户分配角色（仅管理员）。"""

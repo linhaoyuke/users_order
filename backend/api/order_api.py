@@ -8,6 +8,7 @@ from models.operation_log import LogModule
 from schemas.order import OrderSchema
 from snowflake import SnowflakeGenerator
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 from utils.jwt import jwt_required, get_current_user
 # 导入操作日志相关模块
@@ -98,6 +99,86 @@ def handle_orders():
         current_app.logger.error(f"获取订单列表时出错: {e}")
         return jsonify({"message": "获取订单列表失败"}), 500
 
+def update_order_items_with_lock(order, new_items_data):
+    """
+    带悲观排他锁（SELECT ... FOR UPDATE）安全更新订单项与商品库存。
+    按商品ID升序加锁以消除并发死锁隐患。
+    """
+    if not new_items_data:
+        raise ValueError("订单项不能为空")
+
+    # 1. 汇总旧订单项中的商品及还回数量
+    old_product_qty = {}
+    for item in order.items:
+        pid = str(item.product_id)
+        old_product_qty[pid] = old_product_qty.get(pid, 0) + item.quantity
+
+    # 2. 汇总新订单项中的商品及需求数量（防重复商品ID）
+    new_product_qty = {}
+    for item_data in new_items_data:
+        pid = str(item_data['product_id'])
+        qty = int(item_data.get('quantity', 1))
+        if qty <= 0:
+            raise ValueError("商品数量必须大于0")
+        new_product_qty[pid] = new_product_qty.get(pid, 0) + qty
+
+    # 3. 收集所有相关商品ID并排序，按固定顺序加锁防死锁
+    all_product_ids = sorted(list(set(old_product_qty.keys()) | set(new_product_qty.keys())))
+    if not all_product_ids:
+        return 0
+
+    # 4. 加悲观排他锁（SELECT ... FOR UPDATE）
+    locked_products = {
+        str(p.id): p
+        for p in Product.query.filter(Product.id.in_(all_product_ids))
+                             .order_by(Product.id.asc())
+                             .with_for_update()
+                             .all()
+    }
+
+    # 检查新商品是否存在
+    for pid in new_product_qty.keys():
+        if pid not in locked_products:
+            raise ValueError(f"商品ID {pid} 不存在")
+
+    # 5. 还原旧库存
+    for pid, old_qty in old_product_qty.items():
+        if pid in locked_products:
+            locked_products[pid].stock += old_qty
+
+    # 校验并扣减新库存
+    for pid, new_qty in new_product_qty.items():
+        prod = locked_products[pid]
+        if prod.stock < new_qty:
+            raise ValueError(f"商品 '{prod.name}' 库存不足，当前可用库存: {prod.stock}")
+        prod.stock -= new_qty
+
+    # 6. 删除原有订单项并创建新订单项
+    old_items = list(order.items)
+    for old_item in old_items:
+        order.items.remove(old_item)
+        db_session.delete(old_item)
+    db_session.flush()
+
+    new_total_amount = 0
+    for item_data in new_items_data:
+        pid = str(item_data['product_id'])
+        qty = int(item_data.get('quantity', 1))
+        prod = locked_products[pid]
+        new_item = OrderItem(
+            order_id=order.id,
+            product_id=prod.id,
+            quantity=qty,
+            unit_price=prod.price,
+            subtotal=prod.price * qty
+        )
+        order.items.append(new_item)
+        db_session.add(new_item)
+        new_total_amount += new_item.subtotal
+
+    order.total_amount = new_total_amount
+    return new_total_amount
+
 @order_bp.route('/<string:order_id>', methods=['GET', 'PUT', 'DELETE'])
 @jwt_required()
 def handle_order(order_id):
@@ -182,51 +263,7 @@ def handle_order(order_id):
                     order.shipping_address = data['shipping_address']
                     
                 if 'items' in data:
-                    # 1. 还原旧订单项的库存
-                    for item in order.items:
-                        product = Product.query.get(item.product_id)
-                        if product:
-                            product.stock += item.quantity
-                    
-                    # 2. 获取旧订单项列表并逐个删除
-                    old_items = list(order.items)  # 创建副本
-                    for old_item in old_items:
-                        order.items.remove(old_item)  # 从关系中移除
-                        db_session.delete(old_item)   # 从数据库中删除
-                    
-                    # 3. 强制提交删除操作
-                    db_session.flush()
-                    
-                    # 4. 创建新的订单项并执行库存操作
-                    new_total_amount = 0
-                    for item_data in data['items']:
-                        product = Product.query.get(item_data['product_id'])
-                        if not product:
-                            raise Exception(f"商品ID {item_data['product_id']} 不存在")
-                        
-                        quantity = item_data.get('quantity', 1)
-                        if product.stock < quantity:
-                            raise Exception(f"商品 '{product.name}' 库存不足")
-
-                        # 扣减库存
-                        product.stock -= quantity
-                        
-                        # 创建新订单项
-                        new_item = OrderItem(
-                            order_id=order.id,
-                            product_id=product.id,
-                            quantity=quantity,
-                            unit_price=product.price,
-                            subtotal=product.price * quantity
-                        )
-                        
-                        # 添加到订单关系和session
-                        order.items.append(new_item)
-                        db_session.add(new_item)
-                        new_total_amount += new_item.subtotal
-                    
-                    # 5. 更新订单总金额
-                    order.total_amount = new_total_amount
+                    update_order_items_with_lock(order, data['items'])
             
             # 普通用户只能在特定状态下修改订单
             else:
@@ -250,51 +287,7 @@ def handle_order(order_id):
                     order.shipping_address = data['shipping_address']
 
                 if 'items' in data:
-                    # 1. 还原旧订单项的库存
-                    for item in order.items:
-                        product = Product.query.get(item.product_id)
-                        if product:
-                            product.stock += item.quantity
-                    
-                    # 2. 获取旧订单项列表并逐个删除
-                    old_items = list(order.items)  # 创建副本
-                    for old_item in old_items:
-                        order.items.remove(old_item)  # 从关系中移除
-                        db_session.delete(old_item)   # 从数据库中删除
-                    
-                    # 3. 强制提交删除操作
-                    db_session.flush()
-                    
-                    # 4. 创建新的订单项并执行库存操作
-                    new_total_amount = 0
-                    for item_data in data['items']:
-                        product = Product.query.get(item_data['product_id'])
-                        if not product:
-                            raise Exception(f"商品ID {item_data['product_id']} 不存在")
-                        
-                        quantity = item_data.get('quantity', 1)
-                        if product.stock < quantity:
-                            raise Exception(f"商品 '{product.name}' 库存不足")
-
-                        # 扣减库存
-                        product.stock -= quantity
-                        
-                        # 创建新订单项
-                        new_item = OrderItem(
-                            order_id=order.id,
-                            product_id=product.id,
-                            quantity=quantity,
-                            unit_price=product.price,
-                            subtotal=product.price * quantity
-                        )
-                        
-                        # 添加到订单关系和session
-                        order.items.append(new_item)
-                        db_session.add(new_item)
-                        new_total_amount += new_item.subtotal
-                    
-                    # 5. 更新订单总金额
-                    order.total_amount = new_total_amount
+                    update_order_items_with_lock(order, data['items'])
 
             db_session.commit()
             
@@ -399,7 +392,7 @@ def handle_order(order_id):
             return jsonify({"message": "删除订单失败"}), 500
 
 def create_order():
-    """创建一个新订单。"""
+    """创建一个新订单（带行级悲观锁与防死锁并发安全控制）。"""
     try:
         current_user = get_current_user()
         if not current_user:
@@ -430,72 +423,107 @@ def create_order():
             )
             return jsonify({"message": "缺少配送地址"}), 400
 
+        # 1. 聚合各商品的购买数量（防同商品多次传入）并校验数量有效性
+        item_qty_map = {}
+        for item_data in data['items']:
+            pid = str(item_data['product_id'])
+            qty = int(item_data.get('quantity', 1))
+            if qty <= 0:
+                return jsonify({"message": "商品购买数量必须大于0"}), 400
+            item_qty_map[pid] = item_qty_map.get(pid, 0) + qty
+
+        # 2. 排序商品ID，消除死锁隐患（Deadlock Prevention）
+        sorted_pids = sorted(item_qty_map.keys())
+
+        # 3. 按统一顺序加排他锁（SELECT ... FOR UPDATE）
+        locked_products = {
+            str(p.id): p
+            for p in Product.query.filter(Product.id.in_(sorted_pids))
+                                 .order_by(Product.id.asc())
+                                 .with_for_update()
+                                 .all()
+        }
+
+        # 检查商品是否存在
+        for pid in sorted_pids:
+            if pid not in locked_products:
+                LogHelper.log_order_operation(
+                    action=LogAction.CREATE,
+                    order_data=data,
+                    status=LogStatus.FAILED,
+                    error_message=f"商品ID {pid} 不存在"
+                )
+                return jsonify({"message": f"商品ID {pid} 不存在"}), 404
+
+        # 4. 校验库存并执行扣减
+        for pid in sorted_pids:
+            needed_qty = item_qty_map[pid]
+            prod = locked_products[pid]
+            if prod.stock < needed_qty:
+                db_session.rollback()
+                LogHelper.log_order_operation(
+                    action=LogAction.CREATE,
+                    order_data=data,
+                    status=LogStatus.FAILED,
+                    error_message=f"商品 '{prod.name}' 库存不足"
+                )
+                return jsonify({
+                    "message": f"商品 '{prod.name}' 库存不足",
+                    "details": {
+                        "product_id": pid,
+                        "product_name": prod.name,
+                        "requested": needed_qty,
+                        "available": prod.stock
+                    }
+                }), 400
+
+            # 扣减库存
+            prod.stock -= needed_qty
+
+        # 5. 构建订单项及小计
         total_price = 0
         order_items = []
-        product_info_list = []  # 用于日志记录
+        product_info_list = []
 
-        # --- 创建订单项并计算总价 ---
         for item_data in data['items']:
-            product = Product.query.get(item_data['product_id'])
-            if not product:
-                # 记录失败日志
-                LogHelper.log_order_operation(
-                    action=LogAction.CREATE,
-                    order_data=data,
-                    status=LogStatus.FAILED,
-                    error_message=f"商品ID {item_data['product_id']} 不存在"
-                )
-                return jsonify({"message": f"商品ID {item_data['product_id']} 不存在"}), 404
-            
-            quantity = item_data.get('quantity', 1)
-            if product.stock < quantity:
-                # 记录失败日志
-                LogHelper.log_order_operation(
-                    action=LogAction.CREATE,
-                    order_data=data,
-                    status=LogStatus.FAILED,
-                    error_message=f"商品 '{product.name}' 库存不足"
-                )
-                return jsonify({"message": f"商品 '{product.name}' 库存不足"}), 400
+            pid = str(item_data['product_id'])
+            qty = int(item_data.get('quantity', 1))
+            prod = locked_products[pid]
+            subtotal = prod.price * qty
+            total_price += subtotal
 
-            # 更新库存
-            product.stock -= quantity
-            
-            # 创建订单项
             order_item = OrderItem(
-                product_id=product.id,
-                quantity=quantity,
-                unit_price=product.price,  # 使用正确的字段名
-                subtotal=product.price * quantity # 计算小计
+                product_id=prod.id,
+                quantity=qty,
+                unit_price=prod.price,
+                subtotal=subtotal
             )
             order_items.append(order_item)
-            total_price += order_item.subtotal
-            
-            # 记录商品信息用于日志
+
             product_info_list.append({
-                'product_id': str(product.id),
-                'product_name': product.name,
-                'quantity': quantity,
-                'unit_price': float(product.price),
-                'subtotal': float(order_item.subtotal)
+                'product_id': str(prod.id),
+                'product_name': prod.name,
+                'quantity': qty,
+                'unit_price': float(prod.price),
+                'subtotal': float(subtotal)
             })
 
-        # --- 创建订单 ---
+        # 6. 生成雪花ID并持久化订单
         order_number = next(snowflake_generator)
         new_order = Order(
             order_number=order_number,
             user_id=current_user['id'],
-            total_amount=total_price, # 使用正确的字段名
+            total_amount=total_price,
             shipping_address=shipping_address,
-            status='pending',  # 默认状态
-            payment_status='unpaid',  # 默认支付状态
+            status='pending',
+            payment_status='unpaid',
             items=order_items
         )
 
         db_session.add(new_order)
         db_session.commit()
         
-        # 准备日志数据
+        # 7. 准备日志数据并返回
         log_data = {
             'order_number': str(order_number),
             'user_id': current_user['id'] if current_user else None,
@@ -523,6 +551,16 @@ def create_order():
 
         return jsonify(order_schema.dump(order_with_details)), 201
 
+    except IntegrityError as e:
+        db_session.rollback()
+        LogHelper.log_order_operation(
+            action=LogAction.CREATE,
+            order_data=data if 'data' in locals() else {},
+            status=LogStatus.FAILED,
+            error_message="并发冲突或数据库库存约束触发"
+        )
+        return jsonify({"message": "库存扣减失败或并发冲突，请稍后重试"}), 400
+
     except Exception as e:
         db_session.rollback()
         # 记录失败日志
@@ -533,5 +571,5 @@ def create_order():
             error_message=str(e)
         )
         current_app.logger.error(f"创建订单时出错: {e}")
-        return jsonify({"message": "创建订单失败"}), 500
+        return jsonify({"message": f"创建订单失败: {str(e)}"}), 500
 

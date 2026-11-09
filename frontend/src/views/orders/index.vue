@@ -10,42 +10,51 @@
     @current-change="handleCurrentChange"
   >
     <el-table-column prop="id" label="ID" min-width="120" show-overflow-tooltip />
-    <el-table-column prop="order_number" label="订单号" min-width="180" />
-    <el-table-column prop="user_id" label="用户ID" width="100" />
-    <el-table-column label="用户名" width="150">
+    <el-table-column prop="order_number" label="订单号" min-width="180" show-overflow-tooltip />
+    <el-table-column prop="user_id" label="用户ID" min-width="135" align="center">
       <template #default="{ row }">
-        <div>
-          <div class="username">{{ row.user_username || '未知用户' }}</div>
-          <div class="full-name" v-if="row.user_full_name">{{ row.user_full_name }}</div>
+        <el-tooltip :content="row.user_id ? `点击复制完整用户ID: ${row.user_id}` : '无用户ID'" placement="top" :show-after="200">
+          <span class="uuid-pill" @click="copyText(row.user_id)">
+            <span class="uuid-text">{{ formatUuid(row.user_id) }}</span>
+            <el-icon class="copy-icon"><CopyDocument /></el-icon>
+          </span>
+        </el-tooltip>
+      </template>
+    </el-table-column>
+    <el-table-column label="用户名" min-width="150" show-overflow-tooltip>
+      <template #default="{ row }">
+        <div class="user-cell">
+          <span class="username">{{ row.user_username || '未知用户' }}</span>
+          <span class="full-name" v-if="row.user_full_name">({{ row.user_full_name }})</span>
         </div>
       </template>
     </el-table-column>
-    <el-table-column prop="total_amount" label="总金额" width="120">
+    <el-table-column prop="total_amount" label="总金额" width="120" align="right">
       <template #default="{ row }">
-        ¥{{ row.total_amount }}
+        <span class="amount-text">¥{{ Number(row.total_amount).toFixed(2) }}</span>
       </template>
     </el-table-column>
-    <el-table-column label="订单状态" width="120">
+    <el-table-column label="订单状态" width="110" align="center">
       <template #default="{ row }">
         <el-tag :type="getOrderStatusType(row.status)">
           {{ (ORDER_STATUS_LABELS as any)[row.status] || row.status }}
         </el-tag>
       </template>
     </el-table-column>
-    <el-table-column label="支付状态" width="120">
+    <el-table-column label="支付状态" width="110" align="center">
       <template #default="{ row }">
         <el-tag :type="getPaymentStatusType(row.payment_status)">
           {{ (PAYMENT_STATUS_LABELS as any)[row.payment_status] || row.payment_status }}
         </el-tag>
       </template>
     </el-table-column>
-    <el-table-column prop="shipping_address" label="收货地址" min-width="200" />
-    <el-table-column prop="created_at" label="创建时间" width="180">
+    <el-table-column prop="shipping_address" label="收货地址" min-width="200" show-overflow-tooltip />
+    <el-table-column prop="created_at" label="创建时间" width="170" align="center">
       <template #default="{ row }">
         {{ formatDate(row.created_at) }}
       </template>
     </el-table-column>
-    <el-table-column label="操作" width="280" fixed="right">
+    <el-table-column label="操作" width="260" fixed="right" align="center">
       <template #default="{ row }">
         <div class="action-buttons">
           <el-button type="info" size="small" @click="handleView(row)">
@@ -97,6 +106,45 @@ import {orderApi} from '@/api/order'
 import type {Order} from '@/types/order'
 import {ORDER_STATUS_LABELS, PAYMENT_STATUS_LABELS} from '@/types/order'
 import {formatDate} from '@/utils/date'
+import {CopyDocument} from '@element-plus/icons-vue'
+
+// 格式化展示 UUID（截取前8位 + ...，悬停可查看完整ID）
+const formatUuid = (uuid?: string) => {
+  if (!uuid) return '-'
+  if (uuid.length <= 10) return uuid
+  return `${uuid.slice(0, 8)}...`
+}
+
+// 复制文本到剪贴板
+const copyText = (text?: string) => {
+  if (!text) return
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      ElMessage.success('已复制用户ID到剪贴板')
+    }).catch(() => {
+      fallbackCopy(text)
+    })
+  } else {
+    fallbackCopy(text)
+  }
+}
+
+const fallbackCopy = (text: string) => {
+  const textArea = document.createElement('textarea')
+  textArea.value = text
+  textArea.style.position = 'fixed'
+  textArea.style.opacity = '0'
+  document.body.appendChild(textArea)
+  textArea.focus()
+  textArea.select()
+  try {
+    document.execCommand('copy')
+    ElMessage.success('已复制用户ID到剪贴板')
+  } catch (err) {
+    ElMessage.warning('复制失败，请手动选择复制')
+  }
+  document.body.removeChild(textArea)
+}
 
 const orders = ref<Order[]>([])
 const loading = ref(false)
@@ -264,6 +312,48 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.uuid-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-family: 'Consolas', 'Menlo', 'Monaco', monospace;
+  font-size: 12px;
+  color: #606266;
+  background-color: #f4f4f5;
+  border: 1px solid #e4e7ed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+  line-height: 1.4;
+}
+
+.uuid-pill:hover {
+  color: #409eff;
+  background-color: #ecf5ff;
+  border-color: #c6e2ff;
+}
+
+.copy-icon {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.uuid-pill:hover .copy-icon {
+  opacity: 1;
+}
+
+.user-cell {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .username {
   font-weight: 500;
   color: #409eff;
@@ -272,18 +362,25 @@ onMounted(() => {
 .full-name {
   font-size: 12px;
   color: #909399;
-  margin-top: 2px;
+}
+
+.amount-text {
+  font-weight: 600;
+  color: #f56c6c;
+  font-family: 'Consolas', 'Menlo', monospace;
 }
 
 .action-buttons {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
 }
 
 .action-buttons .el-button {
   margin: 0;
+  padding: 5px 8px;
 }
 
 /* 响应式处理 */

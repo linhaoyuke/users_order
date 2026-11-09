@@ -112,8 +112,15 @@ export const useAuthStore = defineStore('auth', () => {
 
   // 5. 权限检查
   const hasPermission = (permission: string) => {
-    // 唯一的权限来源是后端JWT解码出的permissions列表
+    // 超级管理员角色默认具备所有权限
+    if (hasRole('admin')) return true
+    // 权限来源是后端JWT解码出的permissions列表
     return permissions.value.includes(permission)
+  }
+
+  const hasAnyPermission = (permList: string[]) => {
+    if (hasRole('admin')) return true
+    return permList.some(perm => permissions.value.includes(perm))
   }
 
   const hasRole = (roleCode: string) => {
@@ -132,6 +139,7 @@ export const useAuthStore = defineStore('auth', () => {
     logout,
     refreshAccessToken,
     hasPermission,
+    hasAnyPermission,
     hasRole
   }
 })

@@ -1,13 +1,20 @@
 import type {RouteRecordRaw} from 'vue-router'
 import {createRouter, createWebHistory} from 'vue-router'
 import {useAuthStore} from '@/stores/auth'
+import {ElMessage} from 'element-plus'
 
 const routes: RouteRecordRaw[] = [
   {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/auth/Login.vue'),
-    meta: { requiresAuth: false }
+    meta: { title: '登录', requiresAuth: false }
+  },
+  {
+    path: '/403',
+    name: 'Forbidden',
+    component: () => import('@/views/error/403.vue'),
+    meta: { title: '403 - 无权访问', requiresAuth: false }
   },
   {
     path: '/',
@@ -69,7 +76,8 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
-    component: () => import('@/views/error/404.vue')
+    component: () => import('@/views/error/404.vue'),
+    meta: { title: '404 - 页面未找到', requiresAuth: false }
   }
 ]
 
@@ -78,23 +86,66 @@ const router = createRouter({
   routes
 })
 
-// 路由守卫
+// 路由守卫：登录状态认证与细粒度权限拦截（防止直接修改 URL 发生越权访问）
 router.beforeEach((to, _from, next) => {
   const authStore = useAuthStore()
   const hasToken = !!authStore.token
 
-  // 目标路由需要认证，但用户没有token
-  if (to.meta.requiresAuth && !hasToken) {
-    next({ name: 'Login' })
-  } 
-  // 用户有token，但想访问登录页
-  else if (to.name === 'Login' && hasToken) {
-    next({ path: '/' })
-  } 
-  // 其他所有情况
-  else {
-    next()
+  // 1. 设置页面标题
+  if (to.meta?.title) {
+    document.title = `${to.meta.title} - 管理系统`
   }
+
+  // 2. 检查路由层级是否需要登录认证
+  const requiresAuth = to.matched.some(record => record.meta?.requiresAuth)
+
+  if (requiresAuth && !hasToken) {
+    ElMessage.warning('请先登录系统')
+    next({ name: 'Login', query: { redirect: to.fullPath } })
+    return
+  }
+
+  // 3. 已登录状态下访问登录页，自动重定向至首页
+  if (to.name === 'Login' && hasToken) {
+    next({ path: '/' })
+    return
+  }
+
+  // 4. 细粒度权限检查（针对需要认证的路由记录）
+  if (hasToken) {
+    for (const record of to.matched) {
+      // 检查单一权限编码
+      if (record.meta?.permission) {
+        if (!authStore.hasPermission(record.meta.permission)) {
+          ElMessage.warning('您暂无权限访问该页面')
+          next({ name: 'Forbidden', query: { from: to.fullPath } })
+          return
+        }
+      }
+
+      // 检查多权限编码（具备其一即可访问）
+      if (record.meta?.permissions && Array.isArray(record.meta.permissions)) {
+        if (!authStore.hasAnyPermission(record.meta.permissions)) {
+          ElMessage.warning('您暂无权限访问该页面')
+          next({ name: 'Forbidden', query: { from: to.fullPath } })
+          return
+        }
+      }
+
+      // 检查特定角色要求
+      if (record.meta?.roles && Array.isArray(record.meta.roles)) {
+        const hasRequiredRole = record.meta.roles.some(roleCode => authStore.hasRole(roleCode))
+        if (!hasRequiredRole) {
+          ElMessage.warning('您所属角色暂无权限访问该页面')
+          next({ name: 'Forbidden', query: { from: to.fullPath } })
+          return
+        }
+      }
+    }
+  }
+
+  // 5. 权限验证通过，允许跳转
+  next()
 })
 
 export default router

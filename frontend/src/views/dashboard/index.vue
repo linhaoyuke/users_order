@@ -79,23 +79,23 @@
       <!-- 快捷操作 -->
       <el-card class="quick-actions" header="快捷操作">
         <div class="actions-container">
-          <el-button type="primary" size="large" class="action-btn" @click="$router.push('/users')">
+          <el-button v-if="authStore.hasPermission('view_user')" type="primary" size="large" class="action-btn" @click="$router.push('/users')">
             <el-icon><User /></el-icon>
             用户管理
           </el-button>
-          <el-button type="success" size="large" class="action-btn" @click="$router.push('/orders')">
+          <el-button v-if="authStore.hasPermission('view_order')" type="success" size="large" class="action-btn" @click="$router.push('/orders')">
             <el-icon><ShoppingCart /></el-icon>
             订单管理
           </el-button>
-          <el-button type="warning" size="large" class="action-btn" @click="$router.push('/roles')">
+          <el-button v-if="authStore.hasPermission('manage_role')" type="warning" size="large" class="action-btn" @click="$router.push('/roles')">
             <el-icon><UserFilled /></el-icon>
             角色管理
           </el-button>
-          <el-button type="info" size="large" class="action-btn" @click="$router.push('/permissions')">
+          <el-button v-if="authStore.hasPermission('manage_role')" type="info" size="large" class="action-btn" @click="$router.push('/permissions')">
             <el-icon><Lock /></el-icon>
             权限管理
           </el-button>
-          <el-button color="#626aef" size="large" class="action-btn" @click="$router.push('/products')">
+          <el-button v-if="authStore.hasPermission('view_product')" color="#626aef" size="large" class="action-btn" @click="$router.push('/products')">
             <el-icon><Goods /></el-icon>
             商品管理
           </el-button>
@@ -109,6 +109,9 @@
 import {onMounted, reactive} from 'vue'
 import {ElMessage} from 'element-plus'
 import {statsApi} from '@/api/stats'
+import {useAuthStore} from '@/stores/auth'
+
+const authStore = useAuthStore()
 
 const stats = reactive({
   userCount: 0,

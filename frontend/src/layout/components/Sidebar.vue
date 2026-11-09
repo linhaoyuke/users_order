@@ -101,17 +101,32 @@ const menuRoutes = computed(() => {
     return []
   }
 
-  // 过滤子路由
+  // 过滤子路由，与路由守卫权限逻辑严格保持一致
   return layoutRoute.children.filter(child => {
     // 如果路由被标记为隐藏，则不显示
     if (child.meta?.hidden) {
       return false
     }
-    // 如果路由需要权限，则检查用户是否拥有该权限
+    // 检查单一权限
     if (child.meta?.permission) {
-      return authStore.hasPermission(child.meta.permission as string)
+      if (!authStore.hasPermission(child.meta.permission as string)) {
+        return false
+      }
     }
-    // 如果没有指定权限，则默认显示
+    // 检查多权限（满足任意一个即显示）
+    if (child.meta?.permissions && Array.isArray(child.meta.permissions)) {
+      if (!authStore.hasAnyPermission(child.meta.permissions as string[])) {
+        return false
+      }
+    }
+    // 检查角色要求
+    if (child.meta?.roles && Array.isArray(child.meta.roles)) {
+      const hasRequiredRole = (child.meta.roles as string[]).some(role => authStore.hasRole(role))
+      if (!hasRequiredRole) {
+        return false
+      }
+    }
+    // 默认显示
     return true
   })
 })

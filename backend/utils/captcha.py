@@ -1,11 +1,12 @@
 # backend/utils/captcha.py
 
 import base64
+import hashlib
 import operator
 import random
 
 from flask import current_app
-from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadTimeSignature
+from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadTimeSignature, BadSignature, BadData
 
 
 def get_serializer():
@@ -72,6 +73,7 @@ class CaptchaGenerator:
     def verify_captcha(user_input, token):
         """
         静态方法，用于验证用户输入是否与token中的答案匹配。
+        包含单次消费销毁机制（基于 Redis 原子性操作），防止重放与撞库攻击。
         :param user_input: 用户提交的答案。
         :param token: 创建验证码时生成的token。
         :return: Boolean, 验证是否成功。
@@ -79,15 +81,30 @@ class CaptchaGenerator:
         if not user_input or not token:
             return False
 
+        # 1. 验证签名有效性与时效（默认300秒 / 5分钟）
         s = get_serializer()
         try:
-            # 解密token，并设置最大有效期为300秒 (5分钟)
             stored_result = s.loads(token, max_age=300)
-            # 比较解密后的答案和用户输入的答案
-            return stored_result == user_input.strip()
-        except (SignatureExpired, BadTimeSignature):
-            # 如果token过期或签名无效，则验证失败
+        except (BadData, BadSignature, SignatureExpired):
+            # 如果token过期、签名无效或被篡改，则验证失败
             return False
+
+        # 2. 通过 Redis 原子性操作将 Token 标记为已消费（阅后即焚，无论对错均不可二次使用）
+        try:
+            from extensions import cache
+            token_hash = hashlib.sha256(str(token).encode('utf-8')).hexdigest()
+            cache_key = f"captcha_used:{token_hash}"
+            # cache.add 底层调用 Redis SET NX EX，仅当 key 不存在时写入成功返回 True
+            is_first_use = cache.add(cache_key, 1, timeout=300)
+            if not is_first_use:
+                current_app.logger.warning(f"拦截到验证码 Token 重放或二次使用攻击: {token_hash[:12]}")
+                return False
+        except Exception as e:
+            # 保证极端情况下若缓存服务抖动，不阻塞用户正常登录，但记录报警日志
+            current_app.logger.error(f"验证码防重放缓存校验异常: {e}")
+
+        # 3. 校验计算答案
+        return stored_result == str(user_input).strip()
 
     def generate_simple_svg_image(self, text):
         """使用丰富的干扰元素生成SVG格式的验证码图片。"""

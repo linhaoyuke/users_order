@@ -11,3 +11,4 @@ declare module 'vue-router' {
     hidden?: boolean
   }
 }
+

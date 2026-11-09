@@ -5,6 +5,7 @@ from typing import Dict, Any
 
 from extensions import db_session
 from flask import Blueprint, request, jsonify
+from marshmallow import ValidationError
 from models.operation_log import OperationLog, LogModule, LogAction, LogStatus
 from schemas.operation_log import operation_logs_schema, operation_log_query_schema
 from sqlalchemy import desc, and_, or_
@@ -109,6 +110,8 @@ def get_operation_logs():
         
         return jsonify(response), 200
         
+    except ValidationError as err:
+        return jsonify({'message': '查询参数验证失败', 'errors': err.messages}), 400
     except Exception as e:
         return jsonify({'message': f'获取操作日志失败: {str(e)}'}), 500
 
@@ -136,8 +139,9 @@ def get_log_statistics():
     获取操作日志统计信息
     """
     try:
-        # 获取时间范围参数（默认最近30天）
-        days = request.args.get('days', 30, type=int)
+        # 获取时间范围参数（默认最近30天，限制1-365天）
+        raw_days = request.args.get('days', 30, type=int)
+        days = 30 if (raw_days is None or raw_days < 1) else min(raw_days, 365)
         start_date = datetime.now() - timedelta(days=days)
         
         # 基础查询

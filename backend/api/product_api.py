@@ -7,6 +7,7 @@ from sqlalchemy import desc
 from utils.jwt import permission_required
 # 导入操作日志相关模块
 from utils.log_helper import LogHelper, LogAction, LogStatus
+from utils.pagination import get_pagination_params
 
 product_bp = Blueprint('product_bp', __name__)
 
@@ -26,9 +27,8 @@ def get_products():
     if name:
         query = query.filter(Product.name.ilike(f'%{name}%'))
 
-    # 分页参数
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 10, type=int)
+    # 分页参数（上限与边界保护，防内存 DoS 攻击）
+    page, per_page = get_pagination_params(page_param='page', per_page_param='per_page')
     
     # 执行分页查询
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)

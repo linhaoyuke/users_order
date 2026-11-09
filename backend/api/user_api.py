@@ -16,6 +16,7 @@ from sqlalchemy.orm import selectinload  # 用于预加载关联数据，防止N
 from utils.jwt import jwt_required, admin_required, permission_required, get_current_user
 # 导入操作日志相关模块
 from utils.log_helper import LogHelper, LogAction, LogStatus
+from utils.pagination import get_pagination_params
 
 # 创建用户管理的蓝图
 user_bp = Blueprint('users', __name__)
@@ -33,9 +34,8 @@ from sqlalchemy import or_
 def get_users():
     """获取用户列表。支持按用户名、全名、邮箱进行模糊搜索和分页。"""
     try:
-        # 获取分页和搜索参数
-        page = request.args.get('page', 1, type=int)
-        page_size = request.args.get('page_size', 10, type=int)
+        # 获取分页和搜索参数（参数上限与边界保护，防内存 DoS 攻击）
+        page, page_size = get_pagination_params(page_param='page', per_page_param='page_size')
         search_keyword = request.args.get('search')
 
         query = User.query.options(selectinload(User.roles))
@@ -58,7 +58,10 @@ def get_users():
         # 构建符合前端期望的返回格式
         response_data = {
             "count": pagination.total,
-            "results": users_schema.dump(pagination.items)
+            "results": users_schema.dump(pagination.items),
+            "page": pagination.page,
+            "page_size": pagination.per_page,
+            "pages": pagination.pages
         }
 
         return jsonify(response_data), 200

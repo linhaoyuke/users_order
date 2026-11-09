@@ -13,6 +13,7 @@ from sqlalchemy.orm import joinedload
 from utils.jwt import jwt_required, get_current_user
 # 导入操作日志相关模块
 from utils.log_helper import LogHelper, LogAction, LogStatus
+from utils.pagination import get_pagination_params
 
 # 创建雪花ID生成器
 # 实例化生成器
@@ -79,9 +80,8 @@ def handle_orders():
         if not is_admin:
             query = query.filter(Order.user_id == current_user['id'])
 
-        # --- 分页 ---
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 10, type=int)
+        # --- 分页（上限与边界保护，防内存 DoS 攻击） ---
+        page, per_page = get_pagination_params(page_param='page', per_page_param='per_page')
         paginated_orders = query.order_by(Order.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
         
         orders = paginated_orders.items
@@ -90,8 +90,8 @@ def handle_orders():
         return jsonify({
             "items": orders_schema.dump(orders),
             "total": total,
-            "page": page,
-            "per_page": per_page,
+            "page": paginated_orders.page,
+            "per_page": paginated_orders.per_page,
             "pages": paginated_orders.pages,
         }), 200
 
